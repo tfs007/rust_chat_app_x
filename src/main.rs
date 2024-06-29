@@ -3,12 +3,13 @@ use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
-use futures_util::{SinkExt, StreamExt, TryStreamExt}; // Add TryStreamExt
+use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::UnboundedReceiverStream; // Add this import
+use tokio_stream::wrappers::UnboundedReceiverStream;
 
 type Tx = mpsc::UnboundedSender<Message>;
-type PeerMap = Arc<Mutex<HashMap<String, Tx>>>;
+type RoomMap = HashMap<String, Tx>;
+type PeerMap = Arc<Mutex<HashMap<String, RoomMap>>>;
 
 #[tokio::main]
 async fn main() {
@@ -34,17 +35,19 @@ async fn handle_connection(peers: PeerMap, stream: TcpStream) {
     println!("New WebSocket connection: {}", addr);
 
     let (tx, rx) = mpsc::unbounded_channel();
-    peers.lock().unwrap().insert(addr.to_string(), tx);
+    peers.lock().unwrap().entry(addr.to_string()).or_insert_with(HashMap::new).insert(addr.to_string(), tx);
 
     let (outgoing, incoming) = ws_stream.split();
 
     let broadcast_incoming = incoming.try_for_each(|msg| {
         println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
         let peers = peers.lock().unwrap();
-        
+
         let broadcast_recipients = peers
+            .get(&addr.to_string())
+            .unwrap()
             .iter()
-            .filter(|(peer_addr, _)| peer_addr != &&addr.to_string())
+            .filter(|(peer_addr, _)| **peer_addr != addr.to_string())
             .map(|(_, ws_sink)| ws_sink);
 
         for recp in broadcast_recipients {
@@ -60,5 +63,5 @@ async fn handle_connection(peers: PeerMap, stream: TcpStream) {
     futures_util::future::select(broadcast_incoming, receive_from_others).await;
 
     println!("{} disconnected", &addr);
-    peers.lock().unwrap().remove(&addr.to_string());
+    peers.lock().unwrap().get_mut(&addr.to_string()).unwrap().remove(&addr.to_string());
 }
