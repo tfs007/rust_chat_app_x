@@ -1,0 +1,9 @@
+/Users/talat/backend/rust/rust_chat_app/target/debug/deps/libdiesel_migrations-efe75d45c36f0b33.rmeta: /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/lib.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/embedded_migrations.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/errors.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/file_based_migrations.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/migration_harness.rs
+
+/Users/talat/backend/rust/rust_chat_app/target/debug/deps/diesel_migrations-efe75d45c36f0b33.d: /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/lib.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/embedded_migrations.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/errors.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/file_based_migrations.rs /Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/migration_harness.rs
+
+/Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/lib.rs:
+/Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/embedded_migrations.rs:
+/Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/errors.rs:
+/Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/file_based_migrations.rs:
+/Users/talat/.cargo/registry/src/index.crates.io-6f17d22bba15001f/diesel_migrations-2.2.0/src/migration_harness.rs:
