@@ -48,7 +48,9 @@ async fn handle_connection(peers: PeerMap, stream: TcpStream) {
             let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             if !room_name.is_empty() {
                 peers.entry(room_name.clone()).or_insert_with(HashMap::new);
-                tx.send(Message::Text(format!("Room '{}' created.", room_name))).unwrap();
+                // tx.send(Message::Text(format!("Room '{}' created.", room_name))).unwrap();
+                tx.send(Message::Text(format!("\x1b[94mRoom '{}' created.\x1b[0m", room_name))).unwrap();
+
             }
         } else if message.starts_with("/room") {
             let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
@@ -63,25 +65,34 @@ async fn handle_connection(peers: PeerMap, stream: TcpStream) {
                     // Then, join the new room
                     peers.get_mut(&room_name).unwrap().insert(addr.to_string(), tx.clone());
                     current_room = room_name.clone();
-                    tx.send(Message::Text(format!("Joined room '{}'.", room_name))).unwrap();
+                    // tx.send(Message::Text(format!("Joined room '{}'.", room_name))).unwrap();
+                    tx.send(Message::Text(format!("\x1b[94mJoined room '{}'.\x1b[0m", room_name))).unwrap();
+
                 } else {
-                    tx.send(Message::Text(format!("Room '{}' does not exist.", room_name))).unwrap();
+                    // tx.send(Message::Text(format!("Room '{}' does not exist.", room_name))).unwrap();
+                    tx.send(Message::Text(format!("\x1b[91mRoom '{}' does not exist.\x1b[0m", room_name))).unwrap();
                 }
             }
         } else if message == "/leave" {
             if !current_room.is_empty() {
                 if let Some(room) = peers.get_mut(&current_room) {
+                    tx.send(Message::Text(format!("\x1b[91mLeft room '{}'.\x1b[0m", current_room))).unwrap();
+                    current_room.clear();
                     room.remove(&addr.to_string());
                 }
-                tx.send(Message::Text(format!("Left room '{}'.", current_room))).unwrap();
-                current_room.clear();
+                // tx.send(Message::Text(format!("Left room '{}'.", current_room))).unwrap();
+                // tx.send(Message::Text(format!("\x1b[91mLeft room '{}'.\x1b[0m", current_room))).unwrap();
+                // current_room.clear();
             } else {
-                tx.send(Message::Text("You are not in any room.".to_string())).unwrap();
+                // tx.send(Message::Text("You are not in any room.".to_string())).unwrap();
+                tx.send(Message::Text("\x1b[91mYou are not in any room. Use /room <room_name> to join a room.\x1b[0m".to_string())).unwrap();
             }
         } else if message == "/listrooms" {
             let rooms: Vec<_> = peers.keys().cloned().collect();
             let rooms_str = rooms.join(", ");
-            tx.send(Message::Text(format!("/rooms:{}", rooms_str))).unwrap();
+            // tx.send(Message::Text(format!("rooms:{}", rooms_str))).unwrap();
+            tx.send(Message::Text(format!("\x1b[94mRooms:{}\x1b[0m", rooms_str))).unwrap();
+
         } else if !current_room.is_empty() {
             if let Some(room) = peers.get(&current_room) {
                 let broadcast_recipients: Vec<_> = room
@@ -95,7 +106,9 @@ async fn handle_connection(peers: PeerMap, stream: TcpStream) {
                 }
             }
         } else {
-            tx.send(Message::Text("You are not in any room. Use /room <room_name> to join a room.".to_string())).unwrap();
+            // tx.send(Message::Text("You are not in any room. Use /room <room_name> to join a room.".to_string())).unwrap();
+            tx.send(Message::Text("\x1b[91mYou are not in any room. Use /room <room_name> to join a room.\x1b[0m".to_string())).unwrap();
+
         }
         
         futures_util::future::ok(())
