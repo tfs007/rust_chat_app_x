@@ -78,6 +78,10 @@ async fn handle_connection(peers: PeerMap, stream: TcpStream) {
             } else {
                 tx.send(Message::Text("You are not in any room.".to_string())).unwrap();
             }
+        } else if message == "/listrooms" {
+            let rooms: Vec<_> = peers.keys().cloned().collect();
+            let rooms_str = rooms.join(", ");
+            tx.send(Message::Text(format!("/rooms:{}", rooms_str))).unwrap();
         } else if !current_room.is_empty() {
             if let Some(room) = peers.get(&current_room) {
                 let broadcast_recipients: Vec<_> = room
