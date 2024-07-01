@@ -22,17 +22,7 @@ type RoomMap = HashMap<String, HashMap<String, Tx>>;
 type PeerMap = Arc<Mutex<RoomMap>>;
 type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
 
-// pub fn load_rooms_from_db(pool: &DbPool, peers: &PeerMap) {
-//     let mut conn = pool.get().expect("couldn't get db connection from pool");
-//     let rooms: Vec<Room> = rooms::table
-//         .load::<Room>(&mut conn)
-//         .expect("Error loading rooms");
 
-//     let mut peers = peers.lock().unwrap();
-//     for room in rooms {
-//         peers.entry(room.name).or_insert_with(HashMap::new);
-//     }
-// }
 
 pub fn load_rooms_from_db(pool: &DbPool, peers: &PeerMap) {
     let mut conn = pool.get().expect("couldn't get db connection from pool");
@@ -72,41 +62,7 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
         
         let mut peers = peers.lock().unwrap();
         
-        // if message.starts_with("/createroom") {
-        //     let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
-        //     if !room_name.is_empty() {
-        //         let mut conn = pool.get().expect("couldn't get db connection from pool");
-        //         let result: Result<_, diesel::result::Error> = conn.transaction(|conn| {
-        //             // use schema::rooms::dsl::*;
-        //             // use crate::schema::rooms::dsl::*;
-        //             let existing_room = rooms
-        //                 .filter(name.eq(&room_name))
-        //                 .first::<Room>(conn)
-        //                 .optional()?;
-
-        //             if existing_room.is_none() {
-        //                 let new_room = Room {
-        //                     id: 0, // This will be auto-incremented by SQLite
-        //                     name: room_name.clone(),
-        //                     created_by: addr.to_string(),
-        //                     created_at: Utc::now().naive_utc(),
-        //                 };
-        //                 diesel::insert_into(rooms)
-        //                     .values(&new_room)
-        //                     .execute(conn)?;
-        //                 peers.entry(room_name.clone()).or_insert_with(HashMap::new);
-        //                 tx.send(Message::Text(format!("\x1b[94mRoom '{}' created.\x1b[0m", room_name))).unwrap();
-        //                 Ok(())
-        //             } else {
-        //                 tx.send(Message::Text(format!("\x1b[91mRoom '{}' already exists.\x1b[0m", room_name))).unwrap();
-        //                 Ok(())
-        //             }
-        //         });
-        //         if let Err(e) = result {
-        //             eprintln!("Database error: {:?}", e);
-        //         }
-        //     }
-        // } 
+         
         if message.starts_with("/createroom") {
             let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             if !room_name.is_empty() {
