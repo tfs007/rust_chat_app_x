@@ -89,35 +89,45 @@ pub fn load_rooms_from_db(pool: &DbPool, peers: &PeerMap) {
 // }
 
 
-// async fn create_room(room_name: String, addr: SocketAddr, peers: &mut PeerMap, pool: &DbPool, tx: &mpsc::UnboundedSender<Message>) -> Result<(), diesel::result::Error> {
-//     let mut conn = pool.get().expect("couldn't get db connection from pool");
-//     let mut peers = peers.lock().unwrap();
 
-//     conn.transaction(|conn| {
-//         let existing_room = rooms
-//             .filter(name.eq(&room_name))
-//             .select(Room::as_select())
-//             .first::<Room>(conn)
-//             .optional()?;
 
-//         if existing_room.is_none() {
-//             let new_room = Room {
-//                 id: None,
-//                 name: room_name.clone(),
-//                 created_by: addr.to_string(),
-//                 created_at: Utc::now().naive_utc(),
-//             };
-//             diesel::insert_into(rooms)
-//                 .values(&new_room)
-//                 .execute(conn)?;
-//             peers.entry(room_name.clone()).or_insert_with(HashMap::new);
-//             tx.send(Message::Text(format!("\x1b[94mRoom '{}' created.\x1b[0m", room_name))).unwrap();
-//         } else {
-//             tx.send(Message::Text(format!("\x1b[91mRoom '{}' already exists.\x1b[0m", room_name))).unwrap();
-//         }
-//         Ok(())
-//     })
-// }
+pub fn register_user(u_name : String, p_hash: String, conn: &mut SqliteConnection) -> Result<(), DieselError> {
+    use crate::schema::users;
+    use crate::models::User;
+    let new_user = User {
+        id: None,
+        username: u_name,
+        password_hash: p_hash,
+        created_at: Utc::now().naive_utc(),
+
+    };
+    diesel::insert_into(users::table)
+        .values(&new_user)
+        .execute(conn)?;
+
+    Ok(())
+
+}
+
+//  username TEXT NOT NULL,
+// auth_token
+pub fn create_user_token(u_name: String, token: String,conn: &mut SqliteConnection )-> Result<(), DieselError> {
+    use crate::schema::auth_tokens;
+    use crate::models::AuthToken; 
+    let new_token = AuthToken {
+        id: None, 
+        username: u_name,
+        auth_token: token,
+        created_at: Utc::now().naive_utc(),
+    };
+
+    diesel::insert_into(auth_tokens::table)
+        .values(&new_token)
+        .execute(conn)?;
+
+    Ok(())
+
+}
 
 pub fn create_room_entry(room_name: String, creator: String, conn: &mut SqliteConnection) -> Result<(), DieselError> {
     use crate::schema::rooms;
@@ -136,6 +146,8 @@ pub fn create_room_entry(room_name: String, creator: String, conn: &mut SqliteCo
 
     Ok(())
 }
+
+
 
 pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
@@ -165,10 +177,7 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             if !room_name.is_empty() 
             {
-                // ~~~
-                // if let Err(e) = create_room(room_name, addr, &mut peers, &pool, &tx).await {
-                //     eprintln!("Database error: {:?}", e);
-                // }
+                
                 // >>>>
                 let mut conn = pool.get().expect("couldn't get db connection from pool");
                 // >>> ->
@@ -182,36 +191,6 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                         tx.send(Message::Text(format!("\x1b[91mFailed to create room '{}'.\x1b[0m", room_name))).unwrap();
                     }
                 }
-                // <<  <--
-                // let result: Result<_, diesel::result::Error> = conn.transaction(|conn| {
-                //     let existing_room = rooms
-                //         .filter(name.eq(&room_name))
-                //         .select(Room::as_select())
-                //         .first::<Room>(conn)
-                //         .optional()?;
-        
-                //     if existing_room.is_none() {
-                //         let new_room = Room {
-                //             id: None,
-                //             name: room_name.clone(),
-                //             created_by: addr.to_string(),
-                //             created_at: Utc::now().naive_utc(),
-                //         };
-                //         diesel::insert_into(rooms)
-                //             .values(&new_room)
-                //             .execute(conn)?;
-                //         peers.entry(room_name.clone()).or_insert_with(HashMap::new);
-                //         tx.send(Message::Text(format!("\x1b[94mRoom '{}' created.\x1b[0m", room_name))).unwrap();
-                //         Ok(())
-                //     } else {
-                //         tx.send(Message::Text(format!("\x1b[91mRoom '{}' already exists.\x1b[0m", room_name))).unwrap();
-                //         Ok(())
-                //     }
-                // });
-                // if let Err(e) = result {
-                //     eprintln!("Database error: {:?}", e);
-                // }
-                // <<<
             }
         } else if message.starts_with("/room") 
         {

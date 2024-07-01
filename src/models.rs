@@ -13,10 +13,10 @@ pub struct Room {
 
 #[derive(Queryable, Insertable, Selectable)]
 pub struct AuthToken {
-    id: i32,
-    username: String,
-    auth_token: String,
-    created_at: chrono::NaiveDateTime,
+    pub id: Option<i32>,
+    pub username: String,
+    pub auth_token: String,
+    pub created_at: chrono::NaiveDateTime,
 }
 
 #[derive(Queryable, Insertable, Selectable)]
