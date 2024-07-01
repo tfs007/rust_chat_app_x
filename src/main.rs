@@ -13,6 +13,7 @@ use dotenv::dotenv;
 mod schema;
 mod connection_handler;
 mod models;
+mod auth;
 
 use models::Room;
 
