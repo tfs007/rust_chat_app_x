@@ -305,11 +305,11 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             // >>
             
             // <<
-        } else if message == "/leave" {
+        } else if message.starts_with("/leave")  {
             if !current_room.is_empty() {
                 if let Some(room) = peers.get_mut(&current_room) {
                     room.remove(&addr.to_string());
-                    tx.send(Message::Text(format!("\x1b[91mLeft room '{}'.\x1b[0m", current_room))).unwrap();
+                    tx.send(Message::Text(format!("\x1b[91mYou left room '{}'.\x1b[0m", current_room))).unwrap();
                     current_room.clear();
                 }
             } else {
@@ -342,7 +342,20 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                 tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
             }
             
-        } 
+        } else if message.starts_with("/listusers") {
+            let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+            if !room_name.is_empty() {
+                if let Some(room) = peers.get(&room_name) {
+                    let users: Vec<String> = room.keys().cloned().collect();
+                    let users_str = users.join(", ");
+                    tx.send(Message::Text(format!("\x1b[94mUsers in room '{}': {}\x1b[0m", room_name, users_str))).unwrap();
+                } else {
+                    tx.send(Message::Text(format!("\x1b[91mRoom '{}' does not exist.\x1b[0m", room_name))).unwrap();
+                }
+            } else {
+                tx.send(Message::Text("\x1b[91mPlease specify a room name.\x1b[0m".to_string())).unwrap();
+            }
+        }
         else if message == "/register" {
             tx.send(Message::Text("\x1b[91mLet's register...\x1b[0m".to_string())).unwrap();
             // let response = crate::auth::register_user();
