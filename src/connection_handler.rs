@@ -216,13 +216,17 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
         if message.starts_with("/createroom") 
         {
             // println!("I AM in CREATEROOM");
+            // >>>
 
             let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             if !room_name.is_empty() 
             {
-                
-                // >>>>
                 let mut conn = pool.get().expect("couldn't get db connection from pool");
+                let u_name = message.split_whitespace().nth(2).unwrap_or("").to_string();
+                let h_pwd = message.split_whitespace().nth(3).unwrap_or("").to_string();
+                let login_result = login_user(u_name, h_pwd, &mut conn);
+                if login_result == "ok" {
+                // let mut conn = pool.get().expect("couldn't get db connection from pool");
                 // >>> ->
                 match create_room_entry(room_name.clone(), addr.to_string(), &mut conn) {
                     Ok(_) => {
@@ -234,7 +238,12 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                         tx.send(Message::Text(format!("\x1b[91mFailed to create room '{}'.It already exists.\x1b[0m", room_name))).unwrap();
                     }
                 }
+            } else {
+                tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
+            } 
             }
+                
+
         } else if message.starts_with("/register")
         {
             let mut conn = pool.get().expect("couldn't get db connection from pool");
@@ -264,7 +273,12 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
         }
         else if message.starts_with("/room") 
         {
-            let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+            let mut conn = pool.get().expect("couldn't get db connection from pool");
+            let u_name = message.split_whitespace().nth(2).unwrap_or("").to_string();
+            let h_pwd = message.split_whitespace().nth(3).unwrap_or("").to_string();
+            let login_result = login_user(u_name, h_pwd, &mut conn);
+            if login_result == "ok" {
+                let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             if !room_name.is_empty() {
                 let mut conn = pool.get().expect("couldn't get db connection from pool");
                 let room_exists: bool = diesel::select(diesel::dsl::exists(
@@ -284,6 +298,13 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                     tx.send(Message::Text(format!("\x1b[91mRoom '{}' does not exist.\x1b[0m", room_name))).unwrap();
                 }
             }
+
+            } else {
+                tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
+            }
+            // >>
+            
+            // <<
         } else if message == "/leave" {
             if !current_room.is_empty() {
                 if let Some(room) = peers.get_mut(&current_room) {
@@ -296,11 +317,7 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             }
         } else if message.starts_with("/listrooms")
         {
-            // extract user name and hash and use check_login_user 
-            // println!("I am in listrooms");
-            // tx.send(Message::Text(format!("\x1b[94mRooms: {}\x1b[0m", "roommms"))).unwrap(); // TEMP
             let mut conn = pool.get().expect("couldn't get db connection from pool");
-            // let mut conn = pool.get().expect("couldn't get db connection from pool");
             let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
             let login_result = login_user(u_name, h_pwd, &mut conn);
@@ -324,21 +341,7 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                 println!("List room failed");
                 tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
             }
-            // println!("Login results in listroom : {}", login_result);
-            // let rooms_result: QueryResult<Vec<String>> = rooms::table
-            //     .select(rooms::name)
-            //     .load::<String>(&mut conn);
-
-            // match rooms_result {
-            //     Ok(room_names) => {
-            //         let rooms_str = room_names.join(", ");
-            //         tx.send(Message::Text(format!("\x1b[94mRooms: {}\x1b[0m", rooms_str))).unwrap();
-            //     }
-            //     Err(e) => {
-            //         eprintln!("Error listing rooms: {:?}", e);
-            //         tx.send(Message::Text("\x1b[91mError listing rooms.\x1b[0m".to_string())).unwrap();
-            //     }
-            // }
+            
         } 
         else if message == "/register" {
             tx.send(Message::Text("\x1b[91mLet's register...\x1b[0m".to_string())).unwrap();
