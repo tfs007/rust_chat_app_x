@@ -29,6 +29,8 @@ use chrono::Utc;
 
 use crate::auth;
 
+use tokio_tungstenite::WebSocketStream;
+
 type Tx = mpsc::UnboundedSender<Message>;
 type RoomMap = HashMap<String, HashMap<String, Tx>>;
 type PeerMap = Arc<Mutex<RoomMap>>;
@@ -42,6 +44,12 @@ pub struct NewUser<'a> {
     pub password_hash: &'a str,
     pub created_at: NaiveDateTime,
 }
+
+async fn send_custom_message(stream: &mut WebSocketStream<TcpStream>, message: String) -> Result<(), Box<dyn std::error::Error>> {
+    stream.send(Message::Text(message)).await?;
+    Ok(())
+}
+
 
 // Function to hash password
 fn hash_password(password: &str) -> Result<String, Box<dyn Error>> {
@@ -66,29 +74,6 @@ pub fn load_rooms_from_db(pool: &DbPool, peers: &PeerMap) {
     }
 }
 
-// pub async fn register_user(username: String, password: String, pool: DbPool) -> Result<String, Box<dyn Error>> {
-//     // Hash the password
-//     let hashed_password = hash_password(&password)?;
-//     // Get a database connection from the pool
-//     let conn = pool.get()?;
-
-//     // Define the new user
-//     let new_user = NewUser {
-//         username: &username,
-//         password_hash: &hashed_password,
-//         created_at: Utc::now().naive_utc(),
-//     };
-
-//     // Insert the new user into the database
-//     diesel::insert_into(users::table)
-//         .values(&new_user)
-//         .execute(&conn)?;
-
-//     // Return a success message
-//     Ok(format!("User '{}' successfully registered.", username))
-// }
-
-
 
 
 pub fn register_user(u_name : String, p_hash: String, conn: &mut SqliteConnection) -> Result<(), DieselError> {
@@ -109,8 +94,66 @@ pub fn register_user(u_name : String, p_hash: String, conn: &mut SqliteConnectio
 
 }
 
-//  username TEXT NOT NULL,
-// auth_token
+
+pub fn login_user(u_name : String, p_hash: String, conn: &mut SqliteConnection)-> String {
+    use crate::schema::users;
+    use crate::models::User;
+    println!("Username: {}; pwd: {}", u_name, p_hash);
+
+    let result = users::table
+        .filter(users::username.eq(&u_name))
+        .filter(users::password_hash.eq(&p_hash))
+        .first::<User>(conn);
+
+    match result {
+        Ok(_) => "ok".to_string(),
+        Err(diesel::result::Error::NotFound) => "notok".to_string(),
+        Err(e) => {
+            eprintln!("Database error during login: {:?}", e);
+            "notok".to_string()
+        }
+    }
+}
+
+pub fn check_login_user(u_name : String, p_hash: String, conn: &mut SqliteConnection)-> bool {
+    use crate::schema::users;
+    use crate::models::User;
+    println!("Username: {}; pwd: {}", u_name, p_hash);
+
+    let result = users::table
+        .filter(users::username.eq(&u_name))
+        .filter(users::password_hash.eq(&p_hash))
+        .first::<User>(conn);
+
+    match result {
+        Ok(_) => true,
+        Err(diesel::result::Error::NotFound) => false,
+        Err(e) => {
+            eprintln!("Database error during login: {:?}", e);
+            false
+        }
+    }
+}
+
+// pub fn check_message_login(message : String) -> bool {
+//     let mut conn = pool.get().expect("couldn't get db connection from pool");
+//     let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+//     let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
+//     let login_result = check_login_user(u_name, h_pwd, &mut conn);
+//     println!("Login result: {}", login_result);
+//     return login_result;
+//     // let mut words: Vec<&str> = message.split_whitespace().collect();
+//     // return true;
+//     // if words.len() <= 2 {
+//     //     println!("message too short");
+//     //     // return;
+//     // } else {
+//     //     return check_login_user()
+//     // }
+
+// }
+
+
 pub fn create_user_token(u_name: String, token: String,conn: &mut SqliteConnection )-> Result<(), DieselError> {
     use crate::schema::auth_tokens;
     use crate::models::AuthToken; 
@@ -148,7 +191,6 @@ pub fn create_room_entry(room_name: String, creator: String, conn: &mut SqliteCo
 }
 
 
-
 pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
     println!("Peer address: {}", addr);
@@ -173,6 +215,7 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
          
         if message.starts_with("/createroom") 
         {
+            // println!("I AM in CREATEROOM");
 
             let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             if !room_name.is_empty() 
@@ -188,11 +231,38 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                     },
                     Err(e) => {
                         eprintln!("Database error: {:?}", e);
-                        tx.send(Message::Text(format!("\x1b[91mFailed to create room '{}'.\x1b[0m", room_name))).unwrap();
+                        tx.send(Message::Text(format!("\x1b[91mFailed to create room '{}'.It already exists.\x1b[0m", room_name))).unwrap();
                     }
                 }
             }
-        } else if message.starts_with("/room") 
+        } else if message.starts_with("/register")
+        {
+            let mut conn = pool.get().expect("couldn't get db connection from pool");
+            let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+            let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
+            // tx.send(Message::Text(format!("\x1b[91m'{}. User name: {}'. hashed pwd: {}\x1b[0m", "Wanna register".to_string(),u_name,h_pwd))).unwrap();
+
+            match register_user(u_name.clone(),h_pwd.clone(),&mut conn) {
+                Ok(_) => {
+                    tx.send(Message::Text(format!("\x1b[94mUser '{}' created.\x1b[0m", u_name))).unwrap();
+                },
+                Err(e) => {
+                    eprintln!("Database error: {:?}", e);
+                    tx.send(Message::Text(format!("\x1b[91mFailed to create user '{}'.It already exists.\x1b[0m", u_name))).unwrap();
+                }
+            }
+        } else if message.starts_with("/login")
+        {
+            //login function 
+            let mut conn = pool.get().expect("couldn't get db connection from pool");
+            let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+            let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
+            let login_result = login_user(u_name, h_pwd, &mut conn);
+            println!("Login result: {}", login_result);
+            tx.send(Message::Text(login_result.to_string()));
+            
+        }
+        else if message.starts_with("/room") 
         {
             let room_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             if !room_name.is_empty() {
@@ -224,9 +294,19 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             } else {
                 tx.send(Message::Text("\x1b[91mYou are not in any room.\x1b[0m".to_string())).unwrap();
             }
-        } else if message == "/listrooms" {
+        } else if message.starts_with("/listrooms")
+        {
+            // extract user name and hash and use check_login_user 
+            // println!("I am in listrooms");
+            // tx.send(Message::Text(format!("\x1b[94mRooms: {}\x1b[0m", "roommms"))).unwrap(); // TEMP
             let mut conn = pool.get().expect("couldn't get db connection from pool");
-            let rooms_result: QueryResult<Vec<String>> = rooms::table
+            // let mut conn = pool.get().expect("couldn't get db connection from pool");
+            let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+            let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
+            let login_result = login_user(u_name, h_pwd, &mut conn);
+            if login_result == "ok" {
+                println!("List room passed");
+                let rooms_result: QueryResult<Vec<String>> = rooms::table
                 .select(rooms::name)
                 .load::<String>(&mut conn);
 
@@ -240,14 +320,31 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                     tx.send(Message::Text("\x1b[91mError listing rooms.\x1b[0m".to_string())).unwrap();
                 }
             }
+            } else {
+                println!("List room failed");
+                tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
+            }
+            // println!("Login results in listroom : {}", login_result);
+            // let rooms_result: QueryResult<Vec<String>> = rooms::table
+            //     .select(rooms::name)
+            //     .load::<String>(&mut conn);
+
+            // match rooms_result {
+            //     Ok(room_names) => {
+            //         let rooms_str = room_names.join(", ");
+            //         tx.send(Message::Text(format!("\x1b[94mRooms: {}\x1b[0m", rooms_str))).unwrap();
+            //     }
+            //     Err(e) => {
+            //         eprintln!("Error listing rooms: {:?}", e);
+            //         tx.send(Message::Text("\x1b[91mError listing rooms.\x1b[0m".to_string())).unwrap();
+            //     }
+            // }
         } 
         else if message == "/register" {
             tx.send(Message::Text("\x1b[91mLet's register...\x1b[0m".to_string())).unwrap();
             // let response = crate::auth::register_user();
             // tx.send(Message::Text(response)).await.unwrap();
-        } else if message == "/login" {
-            tx.send(Message::Text("\x1b[91mLet's login...\x1b[0m".to_string())).unwrap();
-        } else if message == "/logout" {
+        }  else if message == "/logout" {
             tx.send(Message::Text("\x1b[91mLet's logout...\x1b[0m".to_string())).unwrap();
         }
         else if !current_room.is_empty() {
