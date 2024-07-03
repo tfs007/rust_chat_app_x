@@ -34,6 +34,8 @@ use crate::auth;
 use tokio_tungstenite::WebSocketStream;
 use rusqlite::{Connection, Result};
 
+use tokio::net::UdpSocket;
+
 
 type Tx = mpsc::UnboundedSender<Message>;
 type RoomMap = HashMap<String, HashMap<String, Tx>>;
@@ -54,6 +56,17 @@ async fn send_custom_message(stream: &mut WebSocketStream<TcpStream>, message: S
     Ok(())
 }
 
+async fn send_to_client(client_addr: &str, message: &str) -> std::io::Result<()> {
+    let socket = UdpSocket::bind("0.0.0.0:0").await?;
+    socket.send_to(message.as_bytes(), client_addr).await?;
+    Ok(())
+}
+
+async fn send_message_to_client(sock_addr: &str, dm_msg: &str) {
+    if let Err(e) = send_to_client(sock_addr, dm_msg).await {
+        eprintln!("Failed to send message: {}", e);
+    }
+}
 
 // Function to hash password
 fn hash_password(password: &str) -> Result<String, Box<dyn Error>> {
@@ -243,6 +256,8 @@ pub fn get_socket_ip(u_name: String, conn: &mut SqliteConnection) -> String {
 }
 
 
+
+
 pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
     println!("Peer address: {}", addr);
@@ -258,7 +273,8 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
     
     let mut current_room = String::new();
     
-    let broadcast_incoming = incoming.try_for_each(|msg| {
+    let broadcast_incoming = incoming.try_for_each(|msg| 
+        {
         let message = msg.to_text().unwrap();
         println!("Received a message from {}: {}", addr, message);
         
@@ -440,9 +456,22 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             if login_result == "ok" {
                 println!("Legit DM....");
                 create_direct_msgs_entry(sender,recvr.clone(),dm_msg, &mut conn);
+                // >>
+                
+                // <<
                 //Get the recipient socket address
-                let sock_addr = get_socket_ip(recvr.clone(), &mut conn);
-                println!("Socket address of recvr {}: {}", recvr, sock_addr);
+                // let sock_addr = get_socket_ip(recvr.clone(), &mut conn);
+                // println!("Socket address of recvr {}: {}", recvr, sock_addr);
+                // send_message_to_client(&sock_addr, &dm_msg).await;
+
+                // if let Err(e) = send_to_client(&sock_addr, &dm_msg).await {
+                //     eprintln!("Failed to send message: {}", e);
+                // }
+                // tx.send(Message::Text(format!("\x1b[94mDM sent to {}.\x1b[0m", sock_addr))).unwrap();
+                // tx.send(Message::Text("\x1b[91mPlease specify a room name.\x1b[0m".to_string())).unwrap();
+
+
+
 
             } else {
                 // println!("Not legit DM!!");
