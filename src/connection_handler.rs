@@ -139,24 +139,6 @@ pub fn check_login_user(u_name : String, p_hash: String, conn: &mut SqliteConnec
     }
 }
 
-// pub fn check_message_login(message : String) -> bool {
-//     let mut conn = pool.get().expect("couldn't get db connection from pool");
-//     let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
-//     let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
-//     let login_result = check_login_user(u_name, h_pwd, &mut conn);
-//     println!("Login result: {}", login_result);
-//     return login_result;
-//     // let mut words: Vec<&str> = message.split_whitespace().collect();
-//     // return true;
-//     // if words.len() <= 2 {
-//     //     println!("message too short");
-//     //     // return;
-//     // } else {
-//     //     return check_login_user()
-//     // }
-
-// }
-
 
 pub fn create_user_token(u_name: String, token: String,conn: &mut SqliteConnection )-> Result<(), DieselError> {
     use crate::schema::auth_tokens;
@@ -189,6 +171,26 @@ pub fn create_room_entry(room_name: String, creator: String, conn: &mut SqliteCo
 
     diesel::insert_into(rooms::table)
         .values(&new_room)
+        .execute(conn)?;
+
+    Ok(())
+}
+
+pub fn create_direct_msgs_entry(from_u: String, to_u: String, msg: String,conn: &mut SqliteConnection) -> Result<(), DieselError> {
+    use crate::schema::direct_msgs;
+    use crate::models::DirectMsg;
+    
+    let new_direct_msg = DirectMsg {
+        id: None,
+        from_username: from_u,
+        to_username: to_u,
+        message_text: msg,
+        created_at: Utc::now().naive_utc(),
+        updated_at: Utc::now().naive_utc(),
+    };
+
+    diesel::insert_into(direct_msgs::table)
+        .values(&new_direct_msg)
         .execute(conn)?;
 
     Ok(())
@@ -393,6 +395,40 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             } else {
                 tx.send(Message::Text("\x1b[91mPlease specify a room name.\x1b[0m".to_string())).unwrap();
             }
+        } 
+        else if message.starts_with("/dm") {
+            // tx.send(Message::Text("\x1b[91mLet's DM...\x1b[0m".to_string())).unwrap();
+            
+            
+            let recvr = message.split_whitespace().nth(1).unwrap_or("").to_string();
+            let sender_socket_ip = message.split_whitespace().rev().nth(0).unwrap_or("").to_string();
+            let words: Vec<&str> = message.split_whitespace().collect();
+            let dm_msg = if words.len() >= 6 {
+                words[2..words.len() - 3].join(" ")
+            } else {
+                String::new()
+            };
+            let sender =  message.split_whitespace().rev().nth(2).unwrap_or("").to_string();
+            let token = message.split_whitespace().rev().nth(1).unwrap_or("").to_string();
+            // Store in db table direct_msgs
+            println!("Sender: {}", sender);
+            println!("Sender token: {}", token);
+            println!("Rcvr: {}", recvr);
+            println!("Sender socket ip: {}", sender_socket_ip);
+            println!("Message: {}", dm_msg);
+
+            let mut conn = pool.get().expect("couldn't get db connection from pool");
+            let login_result = login_user(sender.clone(), token, &mut conn);
+            if login_result == "ok" {
+                println!("Legit DM....");
+                create_direct_msgs_entry(sender,recvr,dm_msg, &mut conn);
+            } else {
+                // println!("Not legit DM!!");
+                tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
+
+            }
+            // /dm user abc abc abc abc default default 127.0.0.1:55748
+
         }
           else if message.starts_with("/logout") || message.starts_with("/quit") {
             // let conn = Connection::open_in_memory()?;
