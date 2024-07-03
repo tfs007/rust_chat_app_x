@@ -225,6 +225,24 @@ pub fn delete_live_users_entry(u_name: String, sock_ip: String, conn: &mut Sqlit
 }
 
 
+pub fn get_socket_ip(u_name: String, conn: &mut SqliteConnection) -> String {
+    // use crate::schema::live_users;
+    use crate::schema::live_users;
+    use crate::models::LiveUser;
+
+    let result = live_users::table.filter(live_users::username.eq(&u_name)).first::<LiveUser>(conn);
+
+    match result {
+        Ok(user) => user.socket_ip,
+        Err(diesel::result::Error::NotFound) => "notok".to_string(),
+        Err(e) => {
+            eprintln!("Database error during login: {:?}", e);
+            "notok".to_string()
+        }
+    }
+}
+
+
 pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
     println!("Peer address: {}", addr);
@@ -421,7 +439,11 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             let login_result = login_user(sender.clone(), token, &mut conn);
             if login_result == "ok" {
                 println!("Legit DM....");
-                create_direct_msgs_entry(sender,recvr,dm_msg, &mut conn);
+                create_direct_msgs_entry(sender,recvr.clone(),dm_msg, &mut conn);
+                //Get the recipient socket address
+                let sock_addr = get_socket_ip(recvr.clone(), &mut conn);
+                println!("Socket address of recvr {}: {}", recvr, sock_addr);
+
             } else {
                 // println!("Not legit DM!!");
                 tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
