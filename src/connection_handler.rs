@@ -14,7 +14,9 @@ use crate::schema::rooms::columns::name;
 use diesel::prelude::*;
 use diesel::result::QueryResult;
 use crate::models::Room;
+use crate::models::LiveUser;
 use crate::schema::rooms;
+use crate::schema::live_users;
 use crate::schema::users;
 
 use std::error::Error;
@@ -30,6 +32,8 @@ use chrono::Utc;
 use crate::auth;
 
 use tokio_tungstenite::WebSocketStream;
+use rusqlite::{Connection, Result};
+
 
 type Tx = mpsc::UnboundedSender<Message>;
 type RoomMap = HashMap<String, HashMap<String, Tx>>;
@@ -190,6 +194,34 @@ pub fn create_room_entry(room_name: String, creator: String, conn: &mut SqliteCo
     Ok(())
 }
 
+pub fn create_live_users_entry(usr_name: String, sock_ip: String, conn: &mut SqliteConnection) -> Result<(), DieselError> {
+    use crate::schema::live_users;
+    use crate::models::LiveUser;
+    let new_live_user = LiveUser {
+        id: None,
+        username: usr_name,
+        socket_ip: sock_ip,
+        created_at: Utc::now().naive_utc(),
+        updated_at: Utc::now().naive_utc(),
+    };
+
+    diesel::insert_into(live_users::table)
+        .values(&new_live_user)
+        .execute(conn)?;
+
+    Ok(())
+}
+
+pub fn delete_live_users_entry(u_name: String, sock_ip: String, conn: &mut SqliteConnection) -> Result<usize, DieselError> {
+    use crate::schema::live_users;
+    let deleted_entries = diesel::delete(live_users::table)
+        .filter(live_users::username.eq(u_name))  // Use u_name here
+        .filter(live_users::socket_ip.eq(sock_ip))
+        .execute(conn)?;
+
+    Ok(deleted_entries)
+}
+
 
 pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
@@ -266,8 +298,14 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             let mut conn = pool.get().expect("couldn't get db connection from pool");
             let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
             let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
-            let login_result = login_user(u_name, h_pwd, &mut conn);
+            let local_addr = message.split_whitespace().nth(3).unwrap_or("").to_string();
+            let login_result = login_user(u_name.clone(), h_pwd, &mut conn);
             println!("Login result: {}", login_result);
+            println!("Local Address ->: {}", local_addr);
+            if login_result == "ok"{
+                create_live_users_entry(u_name,local_addr,&mut conn);
+            }
+            
             tx.send(Message::Text(login_result.to_string()));
             
         }
@@ -356,12 +394,28 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                 tx.send(Message::Text("\x1b[91mPlease specify a room name.\x1b[0m".to_string())).unwrap();
             }
         }
-        else if message == "/register" {
-            tx.send(Message::Text("\x1b[91mLet's register...\x1b[0m".to_string())).unwrap();
-            // let response = crate::auth::register_user();
-            // tx.send(Message::Text(response)).await.unwrap();
-        }  else if message == "/logout" {
-            tx.send(Message::Text("\x1b[91mLet's logout...\x1b[0m".to_string())).unwrap();
+          else if message.starts_with("/logout") {
+            // let conn = Connection::open_in_memory()?;
+            let mut conn = pool.get().expect("couldn't get db connection from pool");
+
+            let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+            let local_addr = message.split_whitespace().nth(3).unwrap_or("").to_string();
+            // pub fn delete_live_users_entry(u_name: String, sock_ip: String, conn: &mut SqliteConnection) -> Result<usize, DieselError> {
+            match delete_live_users_entry(u_name, local_addr, &mut conn) {
+                Ok(_) => {
+
+                    tx.send(Message::Text("\x1b[91mYou're logged out...\x1b[0m".to_string())).unwrap();
+                    
+                    },
+                Err(e) => {
+
+                    eprintln!("Database error: {:?}", e);
+                    
+                    // tx.send(Message::Text(format!("\x1b[91mFailed to create user '{}'.It already exists.\x1b[0m", u_name))).unwrap();
+                    
+                    }
+            }
+            // tx.send(Message::Text("\x1b[91mYou're logged out...\x1b[0m".to_string())).unwrap();
         }
         else if !current_room.is_empty() {
             if let Some(room) = peers.get(&current_room) {
