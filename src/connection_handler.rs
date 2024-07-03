@@ -394,7 +394,7 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
                 tx.send(Message::Text("\x1b[91mPlease specify a room name.\x1b[0m".to_string())).unwrap();
             }
         }
-          else if message.starts_with("/logout") {
+          else if message.starts_with("/logout") || message.starts_with("/quit") {
             // let conn = Connection::open_in_memory()?;
             let mut conn = pool.get().expect("couldn't get db connection from pool");
 
@@ -411,11 +411,9 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
 
                     eprintln!("Database error: {:?}", e);
                     
-                    // tx.send(Message::Text(format!("\x1b[91mFailed to create user '{}'.It already exists.\x1b[0m", u_name))).unwrap();
                     
                     }
             }
-            // tx.send(Message::Text("\x1b[91mYou're logged out...\x1b[0m".to_string())).unwrap();
         }
         else if !current_room.is_empty() {
             if let Some(room) = peers.get(&current_room) {
