@@ -156,6 +156,37 @@ pub fn check_login_user(u_name : String, p_hash: String, conn: &mut SqliteConnec
 }
 
 
+
+pub fn get_history_string(from_u_name: String, to_u_name: String, conn: &mut SqliteConnection) -> String{
+    use crate::schema::direct_msgs;
+    use crate::models::DirectMsg;
+    let result = direct_msgs::table
+        .filter(direct_msgs::from_username.eq(&from_u_name).or(direct_msgs::to_username.eq(&from_u_name)))
+        .filter(direct_msgs::from_username.eq(&to_u_name).or(direct_msgs::to_username.eq(&to_u_name)))
+        .order(direct_msgs::created_at.asc())
+        .load::<DirectMsg>(conn);
+
+        let mut history = String::new();
+
+        match result {
+            Ok(messages) => {
+                for msg in messages {
+                    // history += &format!("{}: {}\n", msg.from_username, msg.message_text);
+                    history += &format!("\x1b[33m{}\x1b[0m: {}\n", msg.from_username, msg.message_text);
+
+                }
+            }
+            Err(e) => {
+                history = format!("Error retrieving message history: {:?}", e);
+            }
+        }
+    
+        history
+}
+
+// <<<<
+
+
 pub fn create_user_token(u_name: String, token: String,conn: &mut SqliteConnection )-> Result<(), DieselError> {
     use crate::schema::auth_tokens;
     use crate::models::AuthToken; 
@@ -490,22 +521,6 @@ pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream
                     tx.send(Message::Text("\x1b[91mRecipient is not online.\x1b[0m".to_string())).unwrap();
                 }
 
-                // <<<
-                // Get recvr socket addr TODO
-                // let recvr_socket_addr = get_socket_ip(recvr, &mut conn);
-                // println!("DM Reciever socket: {}", recvr_socket_addr);
-                // >>>
-                // Send message to recvr addr TODO
-                // let dm_msg_clone = dm_msg.clone();
-                // tokio::spawn(async move {
-                //     send_message_to_client(&recvr_socket_addr, &dm_msg_clone).await;
-                // });
-                // } else {
-                //     tx.send(Message::Text("\x1b[91mRecipient is not online.\x1b[0m".to_string())).unwrap();
-                // }
-        // <<<
-
-
             } else {
                 // println!("Not legit DM!!");
                 tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
@@ -513,6 +528,44 @@ pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream
             }
             // /dm user abc abc abc abc default default 127.0.0.1:55748
 
+        } 
+        else if message.starts_with("/history") {
+
+            // >>>>
+            // let from_username = "talat".to_string();
+            let mut conn = pool.get().expect("couldn't get db connection from pool");
+
+            let from_username = message.split_whitespace().rev().nth(2).unwrap_or("").to_string();
+            let to_username = message.split_whitespace().nth(1).unwrap_or("").to_string();
+
+            let sender =  message.split_whitespace().rev().nth(2).unwrap_or("").to_string();
+            let token = message.split_whitespace().rev().nth(1).unwrap_or("").to_string();
+            let login_result = login_user(sender.clone(), token, &mut conn);
+
+
+            if login_result == "ok" {
+
+                let heading = format!("\x1b[36mYour DM history with: {}\x1b[0m", to_username);
+                tx.send(Message::Text(heading)).unwrap();
+
+                // tx.send(Message::Text("\x1b[91mYour DM history with {}:\x1b[0m".to_string(),to_username.as_str())).unwrap();
+
+                // println!("From : {}, To: {}", from_username, to_username);
+                let mut conn = pool.get().expect("couldn't get db connection from pool");
+
+                let dm_history = get_history_string(from_username, to_username, &mut conn);
+
+                tx.send(Message::Text(dm_history)).unwrap();
+
+            } else {
+                tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
+
+            }
+            
+
+            // <<<
+            // let mut conn = pool.get().expect("couldn't get db connection from pool");
+            // let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
         }
           else if message.starts_with("/logout") || message.starts_with("/quit") {
             // let conn = Connection::open_in_memory()?;
