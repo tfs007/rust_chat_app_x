@@ -42,6 +42,7 @@ type RoomMap = HashMap<String, HashMap<String, Tx>>;
 type PeerMap = Arc<Mutex<RoomMap>>;
 type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
 
+
 // Define User struct
 #[derive(Debug, Insertable)]
 #[table_name = "users"]
@@ -55,6 +56,8 @@ async fn send_custom_message(stream: &mut WebSocketStream<TcpStream>, message: S
     stream.send(Message::Text(message)).await?;
     Ok(())
 }
+
+
 
 async fn send_to_client(client_addr: &str, message: &str) -> std::io::Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
@@ -237,6 +240,15 @@ pub fn delete_live_users_entry(u_name: String, sock_ip: String, conn: &mut Sqlit
     Ok(deleted_entries)
 }
 
+pub fn delete_live_users_entry_sockip(sock_ip: String, conn: &mut SqliteConnection) -> Result<usize, DieselError> {
+    use crate::schema::live_users;
+    let deleted_entries = diesel::delete(live_users::table)
+        .filter(live_users::socket_ip.eq(sock_ip))
+        .execute(conn)?;
+
+    Ok(deleted_entries)
+}
+
 
 pub fn get_socket_ip(u_name: String, conn: &mut SqliteConnection) -> String {
     // use crate::schema::live_users;
@@ -279,6 +291,16 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
         println!("Received a message from {}: {}", addr, message);
         
         let mut peers = peers.lock().unwrap();
+
+        // >> TEST
+        // let recipient_socket_ip = "127.0.0.1:12345"; // This should be the actual IP and port of the recipient
+        // let message = "Hello, this is a direct message!";
+
+        // tokio::spawn(async move {
+        //     send_message_to_client(recipient_socket_ip, message).await;
+        // });
+
+        // << TEST
         
          
         if message.starts_with("/createroom") 
@@ -455,22 +477,20 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             let login_result = login_user(sender.clone(), token, &mut conn);
             if login_result == "ok" {
                 println!("Legit DM....");
-                create_direct_msgs_entry(sender,recvr.clone(),dm_msg, &mut conn);
-                // >>
-                
-                // <<
-                //Get the recipient socket address
-                // let sock_addr = get_socket_ip(recvr.clone(), &mut conn);
-                // println!("Socket address of recvr {}: {}", recvr, sock_addr);
-                // send_message_to_client(&sock_addr, &dm_msg).await;
-
-                // if let Err(e) = send_to_client(&sock_addr, &dm_msg).await {
-                //     eprintln!("Failed to send message: {}", e);
+                create_direct_msgs_entry(sender,recvr.clone(),dm_msg.clone(), &mut conn);
+                // Get recvr socket addr TODO
+                let recvr_socket_addr = get_socket_ip(recvr, &mut conn);
+                println!("DM Reciever socket: {}", recvr_socket_addr);
+                // >>>
+                // Send message to recvr addr TODO
+                let dm_msg_clone = dm_msg.clone();
+                tokio::spawn(async move {
+                    send_message_to_client(&recvr_socket_addr, &dm_msg_clone).await;
+                });
+                // } else {
+                //     tx.send(Message::Text("\x1b[91mRecipient is not online.\x1b[0m".to_string())).unwrap();
                 // }
-                // tx.send(Message::Text(format!("\x1b[94mDM sent to {}.\x1b[0m", sock_addr))).unwrap();
-                // tx.send(Message::Text("\x1b[91mPlease specify a room name.\x1b[0m".to_string())).unwrap();
-
-
+        // <<<
 
 
             } else {
@@ -527,11 +547,28 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
     futures_util::future::select(broadcast_incoming, receive_from_others).await;
     
     println!("{} disconnected", &addr);
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
+
+    match delete_live_users_entry_sockip(addr.to_string(), &mut conn) {
+        Ok(_) => {
+
+            tx.send(Message::Text("\x1bUser disconnected".to_string())).unwrap();
+            
+            },
+        Err(e) => {
+
+            eprintln!("Database error: {:?}", e);
+            
+            
+            }
+    }
     
     let mut peers = peers.lock().unwrap();
     if !current_room.is_empty() {
         if let Some(room) = peers.get_mut(&current_room) {
             room.remove(&addr.to_string());
+            // remove from the live_users db 
+            
         }
     }
 }
