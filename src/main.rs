@@ -21,6 +21,7 @@ type Tx = mpsc::UnboundedSender<Message>;
 type RoomMap = HashMap<String, HashMap<String, Tx>>;
 type PeerMap = Arc<Mutex<RoomMap>>;
 type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
+type UserMap = Arc<Mutex<HashMap<String, Tx>>>;
 
 use diesel::query_dsl::InternalJoinDsl;
 
@@ -38,6 +39,8 @@ async fn main() {
     println!("Listening on: {}", addr);
     
     let peers: PeerMap = Arc::new(Mutex::new(HashMap::new()));
+    let users: UserMap = Arc::new(Mutex::new(HashMap::new()));
+
     
     
     connection_handler::load_rooms_from_db(&pool, &peers);
@@ -46,7 +49,8 @@ async fn main() {
     while let Ok((stream, _)) = listener.accept().await {
         let peer_map = peers.clone();
         let db_pool = pool.clone();
-        tokio::spawn(connection_handler::handle_connection(peer_map, stream, db_pool));
+        let user_map = users.clone();
+        tokio::spawn(connection_handler::handle_connection(peer_map, user_map , stream, db_pool));
     }
 }
 

@@ -41,7 +41,7 @@ type Tx = mpsc::UnboundedSender<Message>;
 type RoomMap = HashMap<String, HashMap<String, Tx>>;
 type PeerMap = Arc<Mutex<RoomMap>>;
 type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
-,,,
+type UserMap = Arc<Mutex<HashMap<String, Tx>>>;
 
 // Define User struct
 #[derive(Debug, Insertable)]
@@ -270,7 +270,7 @@ pub fn get_socket_ip(u_name: String, conn: &mut SqliteConnection) -> String {
 
 
 
-pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) {
+pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream, pool: DbPool) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
     println!("Peer address: {}", addr);
     
@@ -361,7 +361,8 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             println!("Login result: {}", login_result);
             println!("Local Address ->: {}", local_addr);
             if login_result == "ok"{
-                create_live_users_entry(u_name,local_addr,&mut conn);
+                create_live_users_entry(u_name.clone(),local_addr,&mut conn);
+                users.lock().unwrap().insert(u_name.clone(), tx.clone());
             }
             
             tx.send(Message::Text(login_result.to_string()));
@@ -477,16 +478,28 @@ pub async fn handle_connection(peers: PeerMap, stream: TcpStream, pool: DbPool) 
             let login_result = login_user(sender.clone(), token, &mut conn);
             if login_result == "ok" {
                 println!("Legit DM....");
-                create_direct_msgs_entry(sender,recvr.clone(),dm_msg.clone(), &mut conn);
+                create_direct_msgs_entry(sender.clone(),recvr.clone(),dm_msg.clone(), &mut conn);
+                // >>>
+                let users = users.lock().unwrap();
+                if let Some(recipient_tx) = users.get(&recvr) {
+                    let dm_message = format!("\x1b[93mDM from {}\x1b[0m: {}", sender.clone(), dm_msg.clone());
+                    if let Err(e) = recipient_tx.send(Message::Text(dm_message)) {
+                        eprintln!("Failed to send DM: {:?}", e);
+                    }
+                } else {
+                    tx.send(Message::Text("\x1b[91mRecipient is not online.\x1b[0m".to_string())).unwrap();
+                }
+
+                // <<<
                 // Get recvr socket addr TODO
-                let recvr_socket_addr = get_socket_ip(recvr, &mut conn);
-                println!("DM Reciever socket: {}", recvr_socket_addr);
+                // let recvr_socket_addr = get_socket_ip(recvr, &mut conn);
+                // println!("DM Reciever socket: {}", recvr_socket_addr);
                 // >>>
                 // Send message to recvr addr TODO
-                let dm_msg_clone = dm_msg.clone();
-                tokio::spawn(async move {
-                    send_message_to_client(&recvr_socket_addr, &dm_msg_clone).await;
-                });
+                // let dm_msg_clone = dm_msg.clone();
+                // tokio::spawn(async move {
+                //     send_message_to_client(&recvr_socket_addr, &dm_msg_clone).await;
+                // });
                 // } else {
                 //     tx.send(Message::Text("\x1b[91mRecipient is not online.\x1b[0m".to_string())).unwrap();
                 // }
