@@ -41,7 +41,7 @@ type Tx = mpsc::UnboundedSender<Message>;
 type RoomMap = HashMap<String, HashMap<String, Tx>>;
 type PeerMap = Arc<Mutex<RoomMap>>;
 type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
-
+,,,
 
 // Define User struct
 #[derive(Debug, Insertable)]
