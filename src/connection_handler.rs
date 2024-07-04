@@ -298,12 +298,21 @@ pub fn get_socket_ip(u_name: String, conn: &mut SqliteConnection) -> String {
     }
 }
 
-
+pub fn get_online_users(users: &UserMap) -> String {
+    let users_lock = users.lock().unwrap();
+    let online_users: Vec<String> = users_lock.keys().cloned().collect();
+    
+    if online_users.is_empty() {
+        "No users currently online.".to_string()
+    } else {
+        online_users.join(", ")
+    }
+}
 
 
 pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream, pool: DbPool) {
     let addr = stream.peer_addr().expect("connected streams should have a peer address");
-    println!("Peer address: {}", addr);
+    // println!("Peer address: {}", addr);
     
     let ws_stream = tokio_tungstenite::accept_async(stream)
         .await
@@ -389,14 +398,16 @@ pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream
             let h_pwd = message.split_whitespace().nth(2).unwrap_or("").to_string();
             let local_addr = message.split_whitespace().nth(3).unwrap_or("").to_string();
             let login_result = login_user(u_name.clone(), h_pwd, &mut conn);
-            println!("Login result: {}", login_result);
-            println!("Local Address ->: {}", local_addr);
+            // println!("Login result: {}", login_result);
+            // println!("Local Address ->: {}", local_addr);
             if login_result == "ok"{
                 create_live_users_entry(u_name.clone(),local_addr,&mut conn);
                 users.lock().unwrap().insert(u_name.clone(), tx.clone());
+                tx.send(Message::Text(format!("\x1b[94mHey'{}', you're logged in.\x1b[0m", u_name))).unwrap();
+
             }
             
-            tx.send(Message::Text(login_result.to_string()));
+            // tx.send(Message::Text(login_result.to_string()));
             
         }
         else if message.starts_with("/room") 
@@ -499,16 +510,15 @@ pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream
             let sender =  message.split_whitespace().rev().nth(2).unwrap_or("").to_string();
             let token = message.split_whitespace().rev().nth(1).unwrap_or("").to_string();
             // Store in db table direct_msgs
-            println!("Sender: {}", sender);
-            println!("Sender token: {}", token);
-            println!("Rcvr: {}", recvr);
-            println!("Sender socket ip: {}", sender_socket_ip);
-            println!("Message: {}", dm_msg);
+            // println!("Sender: {}", sender);
+            // println!("Sender token: {}", token);
+            // println!("Rcvr: {}", recvr);
+            // println!("Sender socket ip: {}", sender_socket_ip);
 
             let mut conn = pool.get().expect("couldn't get db connection from pool");
             let login_result = login_user(sender.clone(), token, &mut conn);
             if login_result == "ok" {
-                println!("Legit DM....");
+                // println!("Legit DM....");
                 create_direct_msgs_entry(sender.clone(),recvr.clone(),dm_msg.clone(), &mut conn);
                 // >>>
                 let users = users.lock().unwrap();
@@ -566,6 +576,22 @@ pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream
             // <<<
             // let mut conn = pool.get().expect("couldn't get db connection from pool");
             // let u_name = message.split_whitespace().nth(1).unwrap_or("").to_string();
+        } 
+        else if message.starts_with("/online") {
+            let mut conn = pool.get().expect("couldn't get db connection from pool");
+            let sender =  message.split_whitespace().rev().nth(2).unwrap_or("").to_string();
+            let token = message.split_whitespace().rev().nth(1).unwrap_or("").to_string();
+            let login_result = login_user(sender.clone(), token, &mut conn);
+
+
+            if login_result == "ok" {
+                let online_users = get_online_users(&users);
+                tx.send(Message::Text(format!("\x1b[94mOnline users: {}\x1b[0m", online_users))).unwrap();
+            } else {
+                tx.send(Message::Text("\x1b[91mPlease log in.\x1b[0m".to_string())).unwrap();
+            }
+            
+
         }
           else if message.starts_with("/logout") || message.starts_with("/quit") {
             // let conn = Connection::open_in_memory()?;
