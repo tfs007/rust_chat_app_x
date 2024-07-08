@@ -22,7 +22,6 @@ use crate::schema::users;
 use std::error::Error;
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use bcrypt::{hash, verify, DEFAULT_COST};
 
 use core::net::SocketAddr;
 
@@ -32,7 +31,6 @@ use chrono::Utc;
 use crate::auth;
 
 use tokio_tungstenite::WebSocketStream;
-use rusqlite::{Connection, Result};
 
 use tokio::net::UdpSocket;
 
@@ -52,30 +50,6 @@ pub struct NewUser<'a> {
     pub created_at: NaiveDateTime,
 }
 
-async fn send_custom_message(stream: &mut WebSocketStream<TcpStream>, message: String) -> Result<(), Box<dyn std::error::Error>> {
-    stream.send(Message::Text(message)).await?;
-    Ok(())
-}
-
-
-
-async fn send_to_client(client_addr: &str, message: &str) -> std::io::Result<()> {
-    let socket = UdpSocket::bind("0.0.0.0:0").await?;
-    socket.send_to(message.as_bytes(), client_addr).await?;
-    Ok(())
-}
-
-async fn send_message_to_client(sock_addr: &str, dm_msg: &str) {
-    if let Err(e) = send_to_client(sock_addr, dm_msg).await {
-        eprintln!("Failed to send message: {}", e);
-    }
-}
-
-// Function to hash password
-fn hash_password(password: &str) -> Result<String, Box<dyn Error>> {
-    let hashed_password = hash(password, DEFAULT_COST)?;
-    Ok(hashed_password)
-}
 
 pub fn load_rooms_from_db(pool: &DbPool, peers: &PeerMap) {
     let mut conn = pool.get().expect("couldn't get db connection from pool");
@@ -134,27 +108,6 @@ pub fn login_user(u_name : String, p_hash: String, conn: &mut SqliteConnection)-
         }
     }
 }
-
-pub fn check_login_user(u_name : String, p_hash: String, conn: &mut SqliteConnection)-> bool {
-    use crate::schema::users;
-    use crate::models::User;
-    println!("Username: {}; pwd: {}", u_name, p_hash);
-
-    let result = users::table
-        .filter(users::username.eq(&u_name))
-        .filter(users::password_hash.eq(&p_hash))
-        .first::<User>(conn);
-
-    match result {
-        Ok(_) => true,
-        Err(diesel::result::Error::NotFound) => false,
-        Err(e) => {
-            eprintln!("Database error during login: {:?}", e);
-            false
-        }
-    }
-}
-
 
 
 pub fn get_history_string(from_u_name: String, to_u_name: String, conn: &mut SqliteConnection) -> String{
@@ -332,15 +285,7 @@ pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream
         
         let mut peers = peers.lock().unwrap();
 
-        // >> TEST
-        // let recipient_socket_ip = "127.0.0.1:12345"; // This should be the actual IP and port of the recipient
-        // let message = "Hello, this is a direct message!";
-
-        // tokio::spawn(async move {
-        //     send_message_to_client(recipient_socket_ip, message).await;
-        // });
-
-        // << TEST
+       
         
          
         if message.starts_with("/createroom") 
@@ -356,7 +301,6 @@ pub async fn handle_connection(peers: PeerMap, users: UserMap, stream: TcpStream
                 let h_pwd = message.split_whitespace().nth(3).unwrap_or("").to_string();
                 let login_result = login_user(u_name, h_pwd, &mut conn);
                 if login_result == "ok" {
-                // let mut conn = pool.get().expect("couldn't get db connection from pool");
                 // >>> ->
                 match create_room_entry(room_name.clone(), addr.to_string(), &mut conn) {
                     Ok(_) => {
